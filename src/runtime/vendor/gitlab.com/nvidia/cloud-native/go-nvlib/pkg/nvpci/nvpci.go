@@ -31,10 +31,14 @@ const (
 	PCIDevicesRoot = "/sys/bus/pci/devices"
 	// PCINvidiaVendorID represents PCI vendor id for NVIDIA
 	PCINvidiaVendorID uint16 = 0x10de
+	// PCIHygonVendorID represents PCI vendor id for HYGON
+	PCIHygonVendorID uint16 = 0x1d94
 	// PCIVgaControllerClass represents the PCI class for VGA Controllers
 	PCIVgaControllerClass uint32 = 0x030000
 	// PCI3dControllerClass represents the PCI class for 3D Graphics accellerators
 	PCI3dControllerClass uint32 = 0x030200
+	// PCIDisplayControllerClass represents the PCI class for Display Controllers
+	PCIDisplayControllerClass uint32 = 0x038000
 	// PCINvSwitchClass represents the PCI class for NVSwitches
 	PCINvSwitchClass uint32 = 0x068000
 )
@@ -85,6 +89,11 @@ func (d *NvidiaPCIDevice) Is3DController() bool {
 	return d.Class == PCI3dControllerClass
 }
 
+// IsDisplayController if class == 0x380
+func (d *NvidiaPCIDevice) IsDisplayController() bool {
+	return d.Class == PCIDisplayControllerClass
+}
+
 // IsNVSwitch if classe == 0x068
 func (d *NvidiaPCIDevice) IsNVSwitch() bool {
 	return d.Class == PCINvSwitchClass
@@ -92,7 +101,7 @@ func (d *NvidiaPCIDevice) IsNVSwitch() bool {
 
 // IsGPU either VGA for older cards or 3D for newer
 func (d *NvidiaPCIDevice) IsGPU() bool {
-	return d.IsVGAController() || d.Is3DController()
+	return d.IsVGAController() || d.Is3DController() || d.IsDisplayController()
 }
 
 // IsResetAvailable some devices can be reset without rebooting,
@@ -169,7 +178,7 @@ func NewDevice(devicePath string) (*NvidiaPCIDevice, error) {
 		return nil, fmt.Errorf("unable to convert vendor string to uint16: %v", vendorStr)
 	}
 
-	if uint16(vendorID) != PCINvidiaVendorID {
+	if uint16(vendorID) != PCINvidiaVendorID  && uint16(vendorID) != PCIHygonVendorID {
 		return nil, nil
 	}
 
