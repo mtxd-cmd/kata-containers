@@ -229,6 +229,10 @@ func (q *qemuAmd64) supportGuestMemoryHotplug() bool {
 	return q.protection == noneProtection
 }
 
+func (q *qemuAmd64) enableSevProtection() bool {
+	return q.protection == sevProtection
+}
+
 func (q *qemuAmd64) appendImage(ctx context.Context, devices []govmmQemu.Device, path string) ([]govmmQemu.Device, error) {
 	if !q.disableNvdimm {
 		return q.appendNvdimmImage(devices, path)

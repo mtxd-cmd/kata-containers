@@ -729,8 +729,18 @@ func (q *qemu) CreateVM(ctx context.Context, id string, network Network, hypervi
 	// For more details, please see https://github.com/qemu/qemu/blob/master/docs/pcie.txt
 	memSize32bit, memSize64bit := q.arch.getBARsMaxAddressableMemory()
 
+	if memSize64bit < (131072 << 20){
+		// For k8s, the Devices are not pass here, so we set the memSize64bit to support 64G VRAM Devices.
+		memSize64bit = 131072 << 20
+	}
+
 	if hypervisorConfig.PCIeRootPort > 0 {
 		qemuConfig.Devices = q.arch.appendPCIeRootPortDevice(qemuConfig.Devices, hypervisorConfig.PCIeRootPort, memSize32bit, memSize64bit)
+		if q.arch.enableSevProtection() {
+			// For SEV guest, and PCIeRootPort enabled, the PciMmio64Mb of OVMF must be set to be
+			// large enough for all PCI devices.
+			qemuConfig.FwCfg = q.arch.appendFwCfgPciMmio64Mb(qemuConfig.FwCfg, memSize64bit)
+		}
 	}
 
 	q.qemuConfig = qemuConfig
@@ -2609,6 +2619,24 @@ func genericAppendPCIeRootPort(devices []govmmQemu.Device, number uint32, machin
 		)
 	}
 	return devices
+}
+
+// genericAppendPciMmio64Mb appends to FwCfg the given PciMmio64Mb
+func genericAppendPciMmio64Mb(fwcfg []govmmQemu.FwCfg, bridges []types.Bridge, memSize64bit uint64) []govmmQemu.FwCfg {
+	pciMmio64MbSize := memSize64bit >> 20
+	for _, b := range bridges {
+		if b.Type != types.CCW {
+			// Every bridge need 1M size
+			pciMmio64MbSize += 1
+		}
+	}
+	fwcfg = append(fwcfg,
+		govmmQemu.FwCfg{
+			Name: "opt/ovmf/X-PciMmio64Mb",
+			Str:  fmt.Sprintf("%d", pciMmio64MbSize),
+		},
+	)
+	return fwcfg
 }
 
 func (q *qemu) GetThreadIDs(ctx context.Context) (VcpuThreadIDs, error) {

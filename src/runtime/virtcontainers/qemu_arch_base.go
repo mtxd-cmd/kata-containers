@@ -144,11 +144,17 @@ type qemuArch interface {
 	// supportGuestMemoryHotplug returns if the guest supports memory hotplug
 	supportGuestMemoryHotplug() bool
 
+	// enableSevProtection returns if the guest enabled SEV Protection
+	enableSevProtection() bool
+
 	// setIgnoreSharedMemoryMigrationCaps set bypass-shared-memory capability for migration
 	setIgnoreSharedMemoryMigrationCaps(context.Context, *govmmQemu.QMP) error
 
 	// appendPCIeRootPortDevice appends a pcie-root-port device to pcie.0 bus
 	appendPCIeRootPortDevice(devices []govmmQemu.Device, number uint32, memSize32bit uint64, memSize64bit uint64) []govmmQemu.Device
+
+	// appendFwCfgPciMmio64Mb appends to Fwcfg the PciMmio64Mb
+	appendFwCfgPciMmio64Mb(fwcfg []govmmQemu.FwCfg, memSize64bit uint64) []govmmQemu.FwCfg
 
 	// append vIOMMU device
 	appendIOMMU(devices []govmmQemu.Device) ([]govmmQemu.Device, error)
@@ -763,6 +769,11 @@ func (q *qemuArchBase) supportGuestMemoryHotplug() bool {
 	return q.protection == noneProtection
 }
 
+func (q *qemuArchBase) 	enableSevProtection() bool {
+	// only amd support sev
+	return false
+}
+
 func (q *qemuArchBase) setIgnoreSharedMemoryMigrationCaps(ctx context.Context, qmp *govmmQemu.QMP) error {
 	err := qmp.ExecSetMigrationCaps(ctx, []map[string]interface{}{
 		{
@@ -832,6 +843,11 @@ func (q *qemuArchBase) addBridge(b types.Bridge) {
 // appendPCIeRootPortDevice appends to devices the given pcie-root-port
 func (q *qemuArchBase) appendPCIeRootPortDevice(devices []govmmQemu.Device, number uint32, memSize32bit uint64, memSize64bit uint64) []govmmQemu.Device {
 	return genericAppendPCIeRootPort(devices, number, q.qemuMachine.Type, memSize32bit, memSize64bit)
+}
+
+// appendFwCfgPciMmio64Mb appends to Fwcfg the PciMmio64Mb
+func (q *qemuArchBase) appendFwCfgPciMmio64Mb(fwcfg []govmmQemu.FwCfg, memSize64bit uint64) []govmmQemu.FwCfg {
+	return genericAppendPciMmio64Mb(fwcfg, q.Bridges, memSize64bit)
 }
 
 func (q *qemuArchBase) getBARsMaxAddressableMemory() (uint64, uint64) {
