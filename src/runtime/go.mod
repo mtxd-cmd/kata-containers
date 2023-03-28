@@ -111,6 +111,7 @@ require (
 
 replace (
 	github.com/containerd/containerd => github.com/confidential-containers/containerd v1.6.7-0.20221123142530-25f68aa818ec
+	github.com/intel-go/cpuid => github.com/fenghao176/cpuid v0.0.0-20220219063923-2e23436be703
 	github.com/opencontainers/image-spec => github.com/opencontainers/image-spec v1.0.2
 	github.com/opencontainers/runc => github.com/opencontainers/runc v1.1.3
 	github.com/uber-go/atomic => go.uber.org/atomic v1.5.1
