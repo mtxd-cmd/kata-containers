@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"io"
 	"os"
+	"github.com/tjfoc/gmsm/sm3"
 )
 
 type guidLE [16]byte
@@ -133,7 +134,8 @@ func CalculateLaunchDigest(firmwarePath, kernelPath, initrdPath, cmdline string)
 	}
 	defer f.Close()
 
-	digest := sha256.New()
+	digest := sm3.New()
+	//digest := sha256.New()
 	if _, err := io.Copy(digest, f); err != nil {
 		return res, err
 	}
