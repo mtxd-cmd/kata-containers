@@ -81,7 +81,7 @@ type customRequestTimeoutKeyType struct{}
 
 var (
 	checkRequestTimeout           = 30 * time.Second
-	defaultRequestTimeout         = 60 * time.Second
+	defaultRequestTimeout         = 300 * time.Second
 	remoteRequestTimeout          = 300 * time.Second
 	customRequestTimeoutKey       = customRequestTimeoutKeyType(struct{}{})
 	errorMissingOCISpec           = errors.New("Missing OCI specification")
