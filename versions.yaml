@@ -164,6 +164,10 @@ assets:
       description: "Linux kernel that supports SEV"
       url: "https://cdn.kernel.org/pub/linux/kernel/v5.x/"
       version: "v5.19.2"
+    csv:
+      description: "Linux kernel that supports CSV"
+      url: "https://cdn.kernel.org/pub/linux/kernel/v5.x/"
+      version: "v5.11.0"
     snp:
       description: "Linux kernel that supports AMD SEV-SNP for VMs"
       url: "https://cdn.kernel.org/pub/linux/kernel/v5.x/"
