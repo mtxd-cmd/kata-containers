@@ -1,0 +1,46 @@
+From c1d3d6065128196f1297bbd40a1d0cbda1581e10 Mon Sep 17 00:00:00 2001
+From: fangbaoshun <fangbaoshun@hygon.cn>
+Date: Tue, 30 May 2023 17:54:09 +0800
+Subject: [PATCH 7/9] [newfeature]Don't collapse memory if it has been
+ decrypted
+
+Change-Id: I0af693cc65d8eeffda63e55d20a2060fc4393020
+---
+ arch/x86/include/asm/pgtable.h | 5 +++++
+ mm/khugepaged.c                | 4 ++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/arch/x86/include/asm/pgtable.h b/arch/x86/include/asm/pgtable.h
+index a02c67291..e104465ce 100644
+--- a/arch/x86/include/asm/pgtable.h
++++ b/arch/x86/include/asm/pgtable.h
+@@ -190,6 +190,11 @@ static inline int pte_huge(pte_t pte)
+ 	return pte_flags(pte) & _PAGE_PSE;
+ }
+ 
++static inline int pte_enc(pte_t pte)
++{
++	return pte_flags(pte) & _PAGE_ENC;
++}
++
+ static inline int pte_global(pte_t pte)
+ {
+ 	return pte_flags(pte) & _PAGE_GLOBAL;
+diff --git a/mm/khugepaged.c b/mm/khugepaged.c
+index 67ab391a5..306d77289 100644
+--- a/mm/khugepaged.c
++++ b/mm/khugepaged.c
+@@ -1239,6 +1239,10 @@ static int khugepaged_scan_pmd(struct mm_struct *mm,
+ 	for (_address = address, _pte = pte; _pte < pte+HPAGE_PMD_NR;
+ 	     _pte++, _address += PAGE_SIZE) {
+ 		pte_t pteval = *_pte;
++		if (sev_active() && (mm != &init_mm) && !pte_enc(pteval)){
++			result = SCAN_PAGE_LOCK;
++			goto out_unmap;
++		}
+ 		if (is_swap_pte(pteval)) {
+ 			if (++unmapped <= khugepaged_max_ptes_swap) {
+ 				/*
+-- 
+2.25.1
+

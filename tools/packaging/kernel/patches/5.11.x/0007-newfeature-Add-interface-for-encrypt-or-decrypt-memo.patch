@@ -1,0 +1,272 @@
+From 2824f06b01074d81af6f2ec51024129b39805c13 Mon Sep 17 00:00:00 2001
+From: fangbaoshun <fangbaoshun@hygon.cn>
+Date: Tue, 30 May 2023 17:53:09 +0800
+Subject: [PATCH 6/9] [newfeature]Add interface for encrypt or decrypt memory
+ allocated by userspace
+
+Change-Id: Icec1404f1bdc05bf9d0b00b78933e5ec5ebc042b
+---
+ arch/x86/include/asm/pgtable_types.h |   5 +
+ arch/x86/include/asm/set_memory.h    |   2 +
+ arch/x86/mm/pat/set_memory.c         | 131 +++++++++++++++++++++++++--
+ 3 files changed, 131 insertions(+), 7 deletions(-)
+
+diff --git a/arch/x86/include/asm/pgtable_types.h b/arch/x86/include/asm/pgtable_types.h
+index 394757ee0..bfa640f32 100644
+--- a/arch/x86/include/asm/pgtable_types.h
++++ b/arch/x86/include/asm/pgtable_types.h
+@@ -159,6 +159,7 @@ enum page_cache_mode {
+ 
+ #define _PAGE_NOCACHE		(cachemode2protval(_PAGE_CACHE_MODE_UC))
+ #define _PAGE_CACHE_WP		(cachemode2protval(_PAGE_CACHE_MODE_WP))
++#define _PAGE_CACHE_WB		(cachemode2protval(_PAGE_CACHE_MODE_WB))
+ 
+ #define __PP _PAGE_PRESENT
+ #define __RW _PAGE_RW
+@@ -170,6 +171,7 @@ enum page_cache_mode {
+ 
+ #define _ENC _PAGE_ENC
+ #define __WP _PAGE_CACHE_WP
++#define __WB _PAGE_CACHE_WB
+ #define __NC _PAGE_NOCACHE
+ #define _PSE _PAGE_PSE
+ 
+@@ -201,6 +203,7 @@ enum page_cache_mode {
+ #define __PAGE_KERNEL_LARGE	 (__PP|__RW|   0|___A|__NX|___D|_PSE|___G)
+ #define __PAGE_KERNEL_LARGE_EXEC (__PP|__RW|   0|___A|   0|___D|_PSE|___G)
+ #define __PAGE_KERNEL_WP	 (__PP|__RW|   0|___A|__NX|___D|   0|___G| __WP)
++#define __PAGE_KERNEL_WB	 (__PP|__RW|   0|___A|__NX|___D|   0|___G| __WB)
+ 
+ 
+ #define __PAGE_KERNEL_IO		__PAGE_KERNEL
+@@ -217,6 +220,8 @@ enum page_cache_mode {
+ #define __pgprot_mask(x)	__pgprot((x) & __default_kernel_pte_mask)
+ 
+ #define PAGE_KERNEL		__pgprot_mask(__PAGE_KERNEL            | _ENC)
++#define PAGE_KERNEL_WP	__pgprot_mask(__PAGE_KERNEL_WP | _ENC)
++#define PAGE_KERNEL_WB_NOENC	__pgprot_mask(__PAGE_KERNEL_WB | 0)
+ #define PAGE_KERNEL_NOENC	__pgprot_mask(__PAGE_KERNEL            |    0)
+ #define PAGE_KERNEL_RO		__pgprot_mask(__PAGE_KERNEL_RO         | _ENC)
+ #define PAGE_KERNEL_EXEC	__pgprot_mask(__PAGE_KERNEL_EXEC       | _ENC)
+diff --git a/arch/x86/include/asm/set_memory.h b/arch/x86/include/asm/set_memory.h
+index 4352f08bf..d073392a9 100644
+--- a/arch/x86/include/asm/set_memory.h
++++ b/arch/x86/include/asm/set_memory.h
+@@ -46,6 +46,8 @@ int set_memory_np(unsigned long addr, int numpages);
+ int set_memory_4k(unsigned long addr, int numpages);
+ int set_memory_encrypted(unsigned long addr, int numpages);
+ int set_memory_decrypted(unsigned long addr, int numpages);
++int set_memory_decrypted_userspace(unsigned long addr, int numpages, struct mm_struct *mm);
++int set_memory_encrypted_userspace(unsigned long addr, int numpages, struct mm_struct *mm);
+ int set_memory_np_noalias(unsigned long addr, int numpages);
+ int set_memory_nonglobal(unsigned long addr, int numpages);
+ int set_memory_global(unsigned long addr, int numpages);
+diff --git a/arch/x86/mm/pat/set_memory.c b/arch/x86/mm/pat/set_memory.c
+index 16f878c26..eadc90824 100644
+--- a/arch/x86/mm/pat/set_memory.c
++++ b/arch/x86/mm/pat/set_memory.c
+@@ -27,6 +27,7 @@
+ #include <asm/proto.h>
+ #include <asm/memtype.h>
+ #include <asm/set_memory.h>
++#include <linux/hugetlb.h>
+ 
+ #include "../mm_internal.h"
+ 
+@@ -44,8 +45,11 @@ struct cpa_data {
+ 	unsigned int	flags;
+ 	unsigned int	force_split		: 1,
+ 			force_static_prot	: 1,
+-			force_flush_all		: 1;
++			force_flush_all		: 1,
++			is_enc,
++			is_user;
+ 	struct page	**pages;
++	struct mm_struct *mm;
+ };
+ 
+ enum cpa_warn {
+@@ -762,6 +766,7 @@ static pgprot_t pgprot_clear_protnone_bits(pgprot_t prot)
+ 	return prot;
+ }
+ 
++static void sev_enc_dec_mem(pte_t pte, unsigned long numpages, bool is_enc);
+ static int __should_split_large_page(pte_t *kpte, unsigned long address,
+ 				     struct cpa_data *cpa)
+ {
+@@ -899,6 +904,12 @@ static int __should_split_large_page(pte_t *kpte, unsigned long address,
+ 
+ 	/* All checks passed. Update the large page mapping. */
+ 	new_pte = pfn_pte(old_pfn, new_prot);
++	if (cpa->is_user){
++		if (cpa->is_enc)
++			sev_enc_dec_mem(*kpte, numpages, true);
++		else
++			sev_enc_dec_mem(*kpte, numpages, false);
++	}
+ 	__set_pmd_pte(kpte, address, new_pte);
+ 	cpa->flags |= CPA_FLUSHTLB;
+ 	cpa_inc_lp_preserved(level);
+@@ -1506,12 +1517,47 @@ static int __cpa_process_fault(struct cpa_data *cpa, unsigned long vaddr,
+ 	}
+ }
+ 
++static char temp_buffer[PAGE_SIZE];
++static void __sev_copy_page(struct page *page, bool is_enc)
++{
++	void *src;
++	void *dst;
++
++	if (page == NULL)
++		return;
++
++	/*
++		* Use a temporary buffer, of cache-line multiple size, to
++		* avoid data corruption as documented in the APM.
++		*/
++	src = is_enc ? vmap(&page, 1, 0, PAGE_KERNEL_WB_NOENC) : vmap(&page, 1, 0, PAGE_KERNEL_WP);
++	dst = is_enc ? vmap(&page, 1, 0, PAGE_KERNEL_WP) : vmap(&page, 1, 0, PAGE_KERNEL_NOENC);
++	BUG_ON(!src || !dst);
++	clflush_cache_range(src, PAGE_SIZE);
++	memcpy(temp_buffer, src, PAGE_SIZE);
++	memcpy(dst, temp_buffer, PAGE_SIZE);
++	clflush_cache_range(dst, PAGE_SIZE);
++
++	vunmap(src);
++	vunmap(dst);
++}
++
++static void sev_enc_dec_mem(pte_t pte, unsigned long numpages, bool is_enc)
++{
++	int i;
++	struct page *page = pte_page(pte);
++	for (i = 0; i < numpages; i++) {
++		__sev_copy_page(page+i, is_enc);
++	}
++}
++
+ static int __change_page_attr(struct cpa_data *cpa, int primary)
+ {
+ 	unsigned long address;
+ 	int do_split, err;
+ 	unsigned int level;
+ 	pte_t *kpte, old_pte;
++	struct vm_area_struct *vma;
+ 
+ 	address = __cpa_addr(cpa, cpa->curpage);
+ repeat:
+@@ -1549,6 +1595,12 @@ repeat:
+ 		 * Do we really change anything ?
+ 		 */
+ 		if (pte_val(old_pte) != pte_val(new_pte)) {
++			if (cpa->is_user) {
++				if (cpa->is_enc)
++					sev_enc_dec_mem(old_pte, 1, true);
++				else
++					sev_enc_dec_mem(old_pte, 1, false);
++			}
+ 			set_pte_atomic(kpte, new_pte);
+ 			cpa->flags |= CPA_FLUSHTLB;
+ 		}
+@@ -1568,13 +1620,22 @@ repeat:
+ 	 */
+ 	if (do_split <= 0)
+ 		return do_split;
+-
+-	/*
+-	 * We have to split the large page:
+-	 */
+-	err = split_large_page(cpa, kpte, address);
+-	if (!err)
++	if (cpa->is_user) {
++		mmap_read_lock(cpa->mm);
++		vma = find_vma(cpa->mm, address);
++		mmap_read_unlock(cpa->mm);
++		spin_lock(&pgd_lock);
++		__split_huge_pmd(vma, (pmd_t *)kpte, address, false, NULL);
++		spin_unlock(&pgd_lock);
+ 		goto repeat;
++	} else {
++		/*
++		* We have to split the large page:
++		*/
++		err = split_large_page(cpa, kpte, address);
++		if (!err)
++			goto repeat;
++	}
+ 
+ 	return err;
+ }
+@@ -1972,6 +2033,56 @@ int set_memory_global(unsigned long addr, int numpages)
+ 				    __pgprot(_PAGE_GLOBAL), 0);
+ }
+ 
++static int __set_memory_enc_dec_user(unsigned long addr, int numpages, bool enc, struct mm_struct *mm)
++{
++	struct cpa_data cpa;
++	int ret;
++
++	/* Nothing to do if memory encryption is not active */
++	if (!mem_encrypt_active())
++		return 0;
++
++	/* Should not be working on unaligned addresses */
++	if (WARN_ONCE(addr & ~PAGE_MASK, "misaligned address: %#lx\n", addr))
++		addr &= PAGE_MASK;
++
++	if (!mm){
++		pr_err("Enc/Dec for user but no mm input\n");
++		return -1;
++	}
++
++	memset(&cpa, 0, sizeof(cpa));
++
++	/* Must avoid aliasing mappings in the highmem code */
++	kmap_flush_unused();
++
++	vm_unmap_aliases();
++
++	cpa.vaddr = &addr;
++	cpa.numpages = numpages;
++	cpa.mask_set = enc ? __pgprot(_PAGE_ENC) : __pgprot(0);
++	cpa.mask_clr = enc ? __pgprot(0) : __pgprot(_PAGE_ENC);
++	cpa.is_enc = enc ? 1 : 0;
++	cpa.mm = mm;
++	cpa.is_user = 1;
++	cpa.force_flush_all = 1;
++	cpa.pgd = mm->pgd;
++
++	cpa_flush(&cpa, 0);
++
++	ret = __change_page_attr_set_clr(&cpa, 0);
++	/*
++	 * After changing the encryption attribute, we need to flush TLBs again
++	 * in case any speculative TLB caching occurred (but no need to flush
++	 * caches again).  We could just use cpa_flush_all(), but in case TLB
++	 * flushing gets optimized in the cpa_flush() path use the same logic
++	 * as above.
++	 */
++	cpa_flush(&cpa, 0);
++
++	return ret;
++}
++
+ static int __set_memory_enc_dec(unsigned long addr, int numpages, bool enc)
+ {
+ 	struct cpa_data cpa;
+@@ -2027,6 +2138,12 @@ int set_memory_decrypted(unsigned long addr, int numpages)
+ }
+ EXPORT_SYMBOL_GPL(set_memory_decrypted);
+ 
++int set_memory_decrypted_userspace(unsigned long addr, int numpages, struct mm_struct *mm)
++{
++	return __set_memory_enc_dec_user(addr, numpages, false, mm);
++}
++EXPORT_SYMBOL_GPL(set_memory_decrypted_userspace);
++
+ int set_pages_uc(struct page *page, int numpages)
+ {
+ 	unsigned long addr = (unsigned long)page_address(page);
+-- 
+2.25.1
+

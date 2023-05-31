@@ -1,0 +1,39 @@
+From 6f698cc9f63235b177e5f32a9fc5faf5e1f46863 Mon Sep 17 00:00:00 2001
+From: fangbaoshun <fangbaoshun@hygon.cn>
+Date: Tue, 30 May 2023 17:55:04 +0800
+Subject: [PATCH 8/9] [newfeature]Use direct DMA instead of SWIOTLB for hydcu
+ in csv guest
+
+Change-Id: Ic919844cbdd05b00baa36e85696f0c88f5a84ec1
+---
+ kernel/dma/direct.h | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/kernel/dma/direct.h b/kernel/dma/direct.h
+index b98615578..5fb33bf0d 100644
+--- a/kernel/dma/direct.h
++++ b/kernel/dma/direct.h
+@@ -87,8 +87,18 @@ static inline dma_addr_t dma_direct_map_page(struct device *dev,
+ 	phys_addr_t phys = page_to_phys(page) + offset;
+ 	dma_addr_t dma_addr = phys_to_dma(dev, phys);
+ 
+-	if (unlikely(swiotlb_force == SWIOTLB_FORCE))
+-		return swiotlb_map(dev, phys, size, dir, attrs);
++	if (unlikely(swiotlb_force == SWIOTLB_FORCE)) {
++		if (sev_active() && (dev->driver) && (strcmp("hydcu", dev->driver->name) == 0)) {
++			if ((offset ==0) && (size % PAGE_SIZE == 0))
++				return phys_to_dma_unencrypted(dev, phys);
++			else {
++				pr_err("Not page aligned phys,offset:0x%lx,size:0x%lx\n",offset, size);
++				return swiotlb_map(dev, phys, size, dir, attrs);
++			}
++		}
++		else
++			return swiotlb_map(dev, phys, size, dir, attrs);
++	}
+ 
+ 	if (unlikely(!dma_capable(dev, dma_addr, size, true))) {
+ 		if (swiotlb_force != SWIOTLB_NO_FORCE)
+-- 
+2.25.1
+

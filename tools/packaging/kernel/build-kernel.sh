@@ -33,6 +33,7 @@ readonly default_initramfs="${script_dir}/initramfs.cpio.gz"
 # GPU vendor
 readonly GV_INTEL="intel"
 readonly GV_NVIDIA="nvidia"
+readonly GV_HYGON="hygon"
 
 #Path to kernel directory
 kernel_path=""
@@ -500,7 +501,7 @@ main() {
 				;;
 			g)
 				gpu_vendor="${OPTARG}"
-				[[ "${gpu_vendor}" == "${GV_INTEL}" || "${gpu_vendor}" == "${GV_NVIDIA}" ]] || die "GPU vendor only support intel and nvidia"
+				[[ "${gpu_vendor}" == "${GV_INTEL}" || "${gpu_vendor}" == "${GV_NVIDIA}" || "${gpu_vendor}" == "${GV_HYGON}" ]] || die "GPU vendor only support intel and nvidia"
 				;;
 			h)
 				usage 0
