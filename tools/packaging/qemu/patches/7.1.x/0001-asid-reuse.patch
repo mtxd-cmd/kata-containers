@@ -1,0 +1,142 @@
+From cfd8142e4a1d174b58b2ff154e8f8bc56d2e4261 Mon Sep 17 00:00:00 2001
+From: appleLin <appleLin@hygon.cn>
+Date: Wed, 3 Aug 2022 21:02:41 +0800
+Subject: [PATCH] asid reuse
+
+Change-Id: Ie0796fb1f0d8fd7f81f8b08d0e0bb4c92144fcb2
+---
+ linux-headers/linux/kvm.h |  4 ++++
+ qapi/qom.json             |  1 +
+ qemu-options.hx           |  5 ++++-
+ target/i386/sev.c         | 37 ++++++++++++++++++++++++++++++++++++-
+ 4 files changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/linux-headers/linux/kvm.h b/linux-headers/linux/kvm.h
+index 599de3c6e3..4953654bf7 100644
+--- a/linux-headers/linux/kvm.h
++++ b/linux-headers/linux/kvm.h
+@@ -1921,6 +1921,10 @@ struct kvm_sev_launch_update_data {
+ 	__u32 len;
+ };
+ 
++struct kvm_sev_init {
++	__u64 userid_addr;
++	__u32 len;
++};
+ 
+ struct kvm_sev_launch_secret {
+ 	__u64 hdr_uaddr;
+diff --git a/qapi/qom.json b/qapi/qom.json
+index 7f92ea43e8..0f47e0b07c 100644
+--- a/qapi/qom.json
++++ b/qapi/qom.json
+@@ -855,6 +855,7 @@
+ { 'struct': 'SevGuestProperties',
+   'data': { '*sev-device': 'str',
+             '*dh-cert-file': 'str',
++            '*user-id': 'str',
+             '*session-file': 'str',
+             '*policy': 'uint32',
+             '*handle': 'uint32',
+diff --git a/qemu-options.hx b/qemu-options.hx
+index b57489d7ca..dca7fedfe7 100644
+--- a/qemu-options.hx
++++ b/qemu-options.hx
+@@ -5496,7 +5496,7 @@ SRST
+                  -object secret,id=sec0,keyid=secmaster0,format=base64,\\
+                      data=$SECRET,iv=$(<iv.b64)
+ 
+-    ``-object sev-guest,id=id,cbitpos=cbitpos,reduced-phys-bits=val,[sev-device=string,policy=policy,handle=handle,dh-cert-file=file,session-file=file,kernel-hashes=on|off]``
++    ``-object sev-guest,id=id,cbitpos=cbitpos,reduced-phys-bits=val,[sev-device=string,policy=policy,user-id=string,handle=handle,dh-cert-file=file,session-file=file,kernel-hashes=on|off]``
+         Create a Secure Encrypted Virtualization (SEV) guest object,
+         which can be used to provide the guest memory encryption support
+         on AMD processors.
+@@ -5530,6 +5530,9 @@ SRST
+         guest then ``handle`` can be use to provide handle of the guest
+         from which to share the key.
+ 
++        The ``user-id`` set the user_id of the guest owner.
++        such as user-id=FBS8848
++
+         The ``dh-cert-file`` and ``session-file`` provides the guest
+         owner's Public Diffie-Hillman key defined in SEV spec. The PDH
+         and session parameters are used for establishing a cryptographic
+diff --git a/target/i386/sev.c b/target/i386/sev.c
+index fe2144c038..e2015f3f1b 100644
+--- a/target/i386/sev.c
++++ b/target/i386/sev.c
+@@ -58,6 +58,7 @@ struct SevGuestState {
+ 
+     /* configuration parameters */
+     char *sev_device;
++    char *user_id;
+     uint32_t policy;
+     char *dh_cert_file;
+     char *session_file;
+@@ -353,6 +354,22 @@ static void sev_guest_set_kernel_hashes(Object *obj, bool value, Error **errp)
+     sev->kernel_hashes = value;
+ }
+ 
++static char *
++sev_guest_get_user_id(Object *obj, Error **errp)
++{
++    SevGuestState *sev = SEV_GUEST(obj);
++
++    return g_strdup(sev->user_id);
++}
++
++static void
++sev_guest_set_user_id(Object *obj, const char *value, Error **errp)
++{
++    SevGuestState *sev = SEV_GUEST(obj);
++
++    sev->user_id = g_strdup(value);
++}
++
+ static void
+ sev_guest_class_init(ObjectClass *oc, void *data)
+ {
+@@ -361,6 +378,11 @@ sev_guest_class_init(ObjectClass *oc, void *data)
+                                   sev_guest_set_sev_device);
+     object_class_property_set_description(oc, "sev-device",
+             "SEV device to use");
++    object_class_property_add_str(oc, "user-id",
++                                  sev_guest_get_user_id,
++                                  sev_guest_set_user_id);
++    object_class_property_set_description(oc, "user-id",
++            "user id of the guest owner");
+     object_class_property_add_str(oc, "dh-cert-file",
+                                   sev_guest_get_dh_cert_file,
+                                   sev_guest_set_dh_cert_file);
+@@ -911,6 +933,8 @@ int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     SevGuestState *sev
+         = (SevGuestState *)object_dynamic_cast(OBJECT(cgs), TYPE_SEV_GUEST);
+     char *devname;
++    char *user_id = NULL;
++    struct kvm_sev_init *sev_init = NULL;
+     int ret, fw_error, cmd;
+     uint32_t ebx;
+     uint32_t host_cbitpos;
+@@ -996,7 +1020,18 @@ int sev_kvm_init(ConfidentialGuestSupport *cgs, Error **errp)
+     }
+ 
+     trace_kvm_sev_init();
+-    ret = sev_ioctl(sev->sev_fd, cmd, NULL, &fw_error);
++    user_id = object_property_get_str(OBJECT(sev), "user-id", NULL);
++    if ((NULL != user_id) && (0!= strlen(user_id)))
++    {
++        sev_init = g_new0(struct kvm_sev_init, 1);
++        sev_init->len = strlen(user_id);
++        sev_init->userid_addr = (__u64)user_id;
++        info_report("%s: user_id[%p]: %s,%d", __func__, user_id, user_id, sev_init->len);
++    }
++
++    ret = sev_ioctl(sev->sev_fd, cmd, sev_init, &fw_error);
++    g_free(user_id);
++    g_free(sev_init);
+     if (ret) {
+         error_setg(errp, "%s: failed to initialize ret=%d fw_error=%d '%s'",
+                    __func__, ret, fw_error, fw_error_to_str(fw_error));
+-- 
+2.34.1
+
