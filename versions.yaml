@@ -87,7 +87,7 @@ assets:
 
     qemu:
       description: "VMM that uses KVM"
-      url: "https://github.com/qemu/qemu"
+      url: "https://gitee.com/mirrors/qemu"
       version: "v7.1.0"
       tag: "v7.1.0"
       # Do not include any non-full release versions
