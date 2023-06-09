@@ -405,6 +405,7 @@ type HypervisorConfig struct {
 	HotplugVFIOOnRootBus           bool
 	GuestMemoryDumpPaging          bool
 	ConfidentialGuest              bool
+	MemEncryptUserId               string
 	SevSnpGuest                    bool
 	GuestPreAttestation            bool
 	BlockDeviceCacheNoflush        bool

@@ -677,6 +677,7 @@ func (q *qemu) CreateVM(ctx context.Context, id string, network Network, hypervi
 		sevConfig := kbs.GuestPreAttestationConfig{
 			Proxy:         q.config.GuestPreAttestationURI,
 			Policy:        q.config.SEVGuestPolicy,
+			UserId:        q.config.MemEncryptUserId,
 			CertChainPath: q.config.SEVCertChainPath,
 		}
 		sevConfig.LaunchId = ""
@@ -903,6 +904,7 @@ func (q *qemu) AttestVM(ctx context.Context) error {
 	sevConfig := kbs.GuestPreAttestationConfig{
 		Proxy:            q.config.GuestPreAttestationURI,
 		Policy:           q.config.SEVGuestPolicy,
+		UserId:           q.config.MemEncryptUserId,
 		Keyset:           q.config.GuestPreAttestationKeyset,
 		LaunchId:         launchId,
 		KernelPath:       kernelPath,

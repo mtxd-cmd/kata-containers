@@ -40,6 +40,10 @@ rootfs_type=@DEFROOTFSTYPE@
 # Default false
 # confidential_guest = true
 
+# User id of the encrypted guest VM, multiple guest VMs of the same User
+# can share the memory encryption key.
+# mem_encryption_user_id = ""
+
 # Enable pre-attestation for AMD SEV and SEV-ES guests.
 # Applies only if confidential_guest is true.
 # (default: false)

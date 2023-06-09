@@ -30,4 +30,5 @@ type GuestPreAttestationConfig struct {
 	SecretType       string
 	SecretGuid       string
 	Policy           uint32
+	UserId           string
 }

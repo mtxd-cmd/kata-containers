@@ -130,6 +130,11 @@ const (
 	SpaprTPMProxy DeviceDriver = "spapr-tpm-proxy"
 )
 
+const (
+	// AsidReuseBitPosition is the ASID Reuse bit position in csvpolicy.
+	AsidReuseBitPosition uint32 = 7
+)
+
 func isDimmSupported(config *Config) bool {
 	switch runtime.GOARCH {
 	case "amd64", "386", "ppc64le", "arm64":
@@ -306,6 +311,10 @@ type Object struct {
 	// SevKernelHashes specifies whether the hashes of the kernel, initrd, & cmdline are included in the measurement
 	// This is only relevant for sev-guest objects
 	SevKernelHashes bool
+
+	// MemEncryptUserId is used to share memory encryption key for multiple
+	// guest VMs owned by the same used
+	MemEncryptUserId string
 }
 
 // Valid returns true if the Object structure is valid and complete.
@@ -378,6 +387,10 @@ func (object Object) QemuParams(config *Config) []string {
 		objectParams = append(objectParams, fmt.Sprintf("id=%s", object.ID))
 		objectParams = append(objectParams, fmt.Sprintf("cbitpos=%d", object.CBitPos))
 		objectParams = append(objectParams, fmt.Sprintf("reduced-phys-bits=%d", object.ReducedPhysBits))
+		if object.MemEncryptUserId != "" {
+			objectParams = append(objectParams, fmt.Sprintf("user-id=%s", object.MemEncryptUserId))
+			object.SevPolicy |= 1 << AsidReuseBitPosition
+		}
 		objectParams = append(objectParams, fmt.Sprintf("policy=%d", object.SevPolicy))
 		if object.SevCertFilePath != "" {
 			objectParams = append(objectParams, fmt.Sprintf("dh-cert-file=%s", object.SevCertFilePath))

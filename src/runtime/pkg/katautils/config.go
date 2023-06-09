@@ -161,6 +161,7 @@ type hypervisor struct {
 	DisableVhostNet                bool     `toml:"disable_vhost_net"`
 	GuestMemoryDumpPaging          bool     `toml:"guest_memory_dump_paging"`
 	ConfidentialGuest              bool     `toml:"confidential_guest"`
+	MemEncryptUserId               string   `toml:"mem_encryption_user_id"`
 	SevSnpGuest                    bool     `toml:"sev_snp_guest"`
 	GuestSwap                      bool     `toml:"enable_guest_swap"`
 	Rootless                       bool     `toml:"rootless"`
@@ -874,6 +875,7 @@ func newQemuHypervisorConfig(h hypervisor) (vc.HypervisorConfig, error) {
 		GuestMemoryDumpPath:       h.GuestMemoryDumpPath,
 		GuestMemoryDumpPaging:     h.GuestMemoryDumpPaging,
 		ConfidentialGuest:         h.ConfidentialGuest,
+		MemEncryptUserId:          h.MemEncryptUserId,
 		SevSnpGuest:               h.SevSnpGuest,
 		GuestSwap:                 h.GuestSwap,
 		Rootless:                  h.Rootless,
