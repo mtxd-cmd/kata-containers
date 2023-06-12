@@ -53,6 +53,8 @@ sudo docker pull ${container_image} || (sudo "${container_engine}" build \
 sudo "${container_engine}" run \
 	--rm \
 	-i \
+	--env https_proxy="${https_proxy}" \
+	--env http_proxy="${http_proxy}" \
 	--env BUILD_SUFFIX="${build_suffix}" \
 	--env HYPERVISOR_NAME="${HYPERVISOR_NAME}" \
 	--env PKGVERSION="${PKGVERSION}" \

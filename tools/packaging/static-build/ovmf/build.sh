@@ -64,6 +64,8 @@ sudo docker pull ${container_image} || \
 
 sudo docker run --rm -i -v "${repo_root_dir}:${repo_root_dir}" \
 	-w "${PWD}" \
+	--env https_proxy="${https_proxy}" \
+	--env http_proxy="${http_proxy}" \
 	--env DESTDIR="${DESTDIR}" --env PREFIX="${PREFIX}" \
 	--env ovmf_build="${ovmf_build}" \
 	--env ovmf_repo="${ovmf_repo}" \
