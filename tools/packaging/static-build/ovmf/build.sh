@@ -23,6 +23,9 @@ ovmf_version="${ovmf_version:-}"
 ovmf_package="${ovmf_package:-}"
 package_output_dir="${package_output_dir:-}"
 
+http_proxy="${http_proxy:-}"
+https_proxy="${https_proxy:-}"
+
 if [ -z "$ovmf_repo" ]; then
 	case "${ovmf_build}" in
 		"tdx")

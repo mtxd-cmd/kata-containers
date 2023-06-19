@@ -10,6 +10,9 @@ ARG CACHE_TIMEOUT
 ARG DEBIAN_FRONTEND=noninteractive
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list
+RUN apt-get clean
 RUN apt-get update && apt-get upgrade -y && \
     apt-get --no-install-recommends install -y \
 	    apt-utils \

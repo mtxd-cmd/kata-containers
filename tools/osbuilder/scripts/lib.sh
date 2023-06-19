@@ -238,6 +238,16 @@ ENV http_proxy=${http_proxy:-}
 ENV https_proxy=${http_proxy:-}
 RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSLf | \
     sh -s -- -y --default-toolchain ${RUST_VERSION} -t ${rustarch}-unknown-linux-${LIBC}
+RUN <<EOF cat > /root/.cargo/config
+[source.crates-io]
+replace-with = 'rsproxy'
+[source.rsproxy]
+registry = 'https://rsproxy.cn/crates.io-index'
+[registries.rsproxy]
+index = 'https://rsproxy.cn/crates.io-index'
+[net]
+git-fetch-with-cli = true
+EOF
 RUN . /root/.cargo/env; cargo install cargo-when
 "
 	pushd "${dir}"
